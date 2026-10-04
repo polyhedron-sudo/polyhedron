@@ -1,34 +1,56 @@
-# Polyhedron — Phase 1B / DM-Engine Slice
+# Polyhedron DM Engine — Phase 2A
 
-Dependency-free browser prototype for the Polyhedron Canon.
+This version connects the player-facing Polyhedron campaign to **Ollama's local service**, using the authenticated `gemma4:cloud` model.
 
-## Run
+## Requirements
+- Node.js 18+
+- Ollama installed and already signed in
+- Cloud access enabled in Ollama
+- `gemma4:cloud` available through Ollama
 
-Extract the ZIP and open `index.html` in a modern browser. No server or build step is required.
+You do **not** need to create or paste an Ollama API key into this project. The Node server talks to the Ollama service running on your computer, and Ollama handles the existing authentication.
 
-## Included
+## Setup (Windows PowerShell)
 
-- Mandatory Campaign Opening
-- Player Rolls / LLM Rolls character creation
-- Witness and Void handling
-- Nine functional results and duplicate frequency
-- Three-Glyph selection
-- Character initialization
-- Five-tier Expression data extracted from the supplied Canon
-- Awakening / Introduction boundary without invented lore
-- DM/Game Engine action pipeline
-- Consideration / Conditional Intent / Committed Action distinction
-- Method identification
-- Expression validation against unlocked tier and remaining uses
-- Correct resource accounting: no spend for consideration or conditional intent
-- Conditional action persistence
-- Active Expression activation records
-- Engine pipeline visibility for prototype testing
-- Persistent localStorage state
-- Campaign JSON export
+1. Confirm Ollama is working:
 
-## Engine boundary
+```powershell
+ollama run gemma4:cloud
+```
 
-This slice intentionally does **not** invent scene facts, NPCs, quest outcomes, or Expression results that require campaign context. A committed mundane action or Expression activation is recorded and validated, while narrative success/failure/partial success/complication remains the next integration point for the AI DM layer.
+2. Extract this project.
 
-The source Canon is the authority. The browser rules layer does not grant abilities, remove limitations, or create resources that are not established in Canon.
+3. In the project folder, start Polyhedron:
+
+```powershell
+npm start
+```
+
+4. Open:
+
+```text
+http://localhost:3000
+```
+
+The server uses `http://localhost:11434/api/chat` by default and requests `gemma4:cloud`.
+
+### Optional configuration
+
+You can override the model or Ollama address for testing:
+
+```powershell
+$env:OLLAMA_MODEL="gemma4:cloud"
+$env:OLLAMA_URL="http://localhost:11434/api/chat"
+npm start
+```
+
+## What this milestone does
+- Player submits a natural-language action.
+- The existing Polyhedron engine performs its current intent/method/Canon validation.
+- A committed action is sent to `gemma4:cloud` through the local Ollama service with the relevant Canon and campaign state.
+- The DM returns narrative plus durable recollections.
+- The response is stored in the local campaign history.
+- The LLM does not directly mutate mechanical state.
+
+## Important boundary
+This is the first real DM connection, not the finished Game Engine. Mechanical adjudication, richer world state, NPC state, quests, mastery resolution, and structured tool calls will be expanded in later milestones.
