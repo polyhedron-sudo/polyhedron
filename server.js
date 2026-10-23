@@ -25,9 +25,11 @@ const TEST_MASTERY_AWARD = Math.max(1, Math.min(100, Number(process.env.POLYHEDR
 const MAX_BODY = 2_000_000;
 const MIME = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.md':'text/markdown; charset=utf-8', '.json':'application/json; charset=utf-8' };
 
-const canonPath = path.join(ROOT, 'canon.md');
+// On Render, Canon must be present as a private Secret File, not in the repository.
+// For local development, a private path can be set with CANON_PATH.
+const canonPath = process.env.CANON_PATH || (process.env.RENDER ? '/etc/secrets/canon.md' : path.join(ROOT, 'canon.md'));
 if (!fs.existsSync(canonPath)) {
-  console.error('FATAL: canon.md is missing. Polyhedron will not start without its complete Canon.');
+  console.error('FATAL: private canon.md is missing. Polyhedron will not start without its complete Canon.');
   process.exit(1);
 }
 const CANON = fs.readFileSync(canonPath, 'utf8');
@@ -285,7 +287,11 @@ const server = http.createServer(async (req, res) => {
     try { const payload = await readBody(req); if (!String(payload.action || '').trim()) return send(res, 400, { error:'An action is required.' }); return send(res, 200, await runTurn(payload)); }
     catch (error) { return send(res, 502, { error:error.message, canonLoaded:true, canonCharacters:CANON.length }); }
   }
-  let requested = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
+  let requested;
+  try { requested = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname); }
+  catch { return send(res, 400, { error:'Invalid path' }); }
+  // Never serve the Canon, hidden files, or secrets from the public web root.
+  if (requested.split('/').some(part => part.startsWith('.')) || requested.toLowerCase() === '/canon.md') return send(res, 404, { error:'Not found' });
   const filePath = path.resolve(ROOT, `.${requested}`);
   if (!filePath.startsWith(ROOT + path.sep) || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) return send(res, 404, { error:'Not found' });
   res.writeHead(200, { 'Content-Type':MIME[path.extname(filePath)] || 'application/octet-stream', 'Cache-Control':'no-store' });
