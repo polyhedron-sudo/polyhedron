@@ -46,6 +46,35 @@
     return { appliedTotal:progression.reduce((sum, p) => sum+p.applied, 0), progression, feedback, error:null };
   }
 
-  root.PolyhedronRules = { applyMasteryAward };
+  const VOID_TIERS = [
+    { tier:1, name:'Void Step', cost:2 },
+    { tier:2, name:'Void Severance', cost:4, prerequisite:1 },
+    { tier:3, name:'Temper Causality', cost:6, prerequisite:2 },
+    { tier:4, name:'Touch the Void', cost:8 },
+    { tier:5, name:'Initiate Gate', cost:10 }
+  ];
+
+  // Void Marks are a finite progression resource. Purchase decisions are enforced
+  // by the engine, not by the LLM or by UI button state alone.
+  function purchaseVoidTier(character, tierNumber) {
+    const tier = VOID_TIERS.find(item => item.tier === Number(tierNumber));
+    if (!character || typeof character !== 'object') return { ok:false, error:'Character is not initialized.' };
+    character.voidTiers ||= [];
+    const marks = Math.max(0, Number(character.voidMarks) || 0);
+    if (!tier) return { ok:false, error:'Invalid Void tier.' };
+    if (character.voidManifested) return { ok:false, error:'Void Manifestation has already ended this character’s journey.' };
+    if (character.voidTiers.some(item => Number(item.tier) === tier.tier)) return { ok:false, error:`${tier.name} has already been purchased.` };
+    if (tier.prerequisite && !character.voidTiers.some(item => Number(item.tier) === tier.prerequisite)) {
+      const prerequisite = VOID_TIERS.find(item => item.tier === tier.prerequisite);
+      return { ok:false, error:`${tier.name} requires ${prerequisite.name} first.` };
+    }
+    if (marks < tier.cost) return { ok:false, error:`${tier.name} costs ${tier.cost} Void Marks; only ${marks} available.` };
+    character.voidMarks = marks - tier.cost;
+    character.voidTiers.push({ tier:tier.tier, name:tier.name, cost:tier.cost, description:tier.description||'' });
+    if (tier.tier === 5) character.voidManifested = true;
+    return { ok:true, tier:{...tier}, remainingMarks:character.voidMarks, manifested:!!character.voidManifested };
+  }
+
+  root.PolyhedronRules = { applyMasteryAward, VOID_TIERS, purchaseVoidTier };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.PolyhedronRules;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

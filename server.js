@@ -5,7 +5,18 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const EXPRESSIONS = require('./expressions.js');
+// Load the full canonical Expression registry only from Render Secret Files.
+const expressionsPath=process.env.EXPRESSIONS_PATH|| (process.env.RENDER?'/etc/secrets/expressions.json':require('node:path').join(__dirname,'expressions.json'));
+if(!fs.existsSync(expressionsPath)){
+ console.error('FATAL: private expressions.json is missing. Add it as a Render Secret File before deploying this release.');
+ process.exit(1);
+}
+let EXPRESSIONS;
+try{EXPRESSIONS=JSON.parse(fs.readFileSync(expressionsPath,'utf8'));}
+catch{console.error('FATAL: private expressions.json is not valid JSON.');process.exit(1);}
+if(!EXPRESSIONS||typeof EXPRESSIONS!=='object'||!EXPRESSIONS.CROWN||!EXPRESSIONS.GALE){
+ console.error('FATAL: private expressions.json is incomplete.');process.exit(1);
+}
 
 const ROOT = __dirname;
 const PORT = Number(process.env.PORT || 3000);
