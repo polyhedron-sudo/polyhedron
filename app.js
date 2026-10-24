@@ -51,8 +51,8 @@ const OPENING=[
 const defaultState=()=>({schemaVersion:4,phase:'opening',method:null,rolls:[],functional:[],witness:[],voidMarks:0,selected:[],character:null,lastSave:null,actions:[],pendingActions:[],actionHistory:[],recollections:[],activeEffects:[],expressionHistory:[],masteryHistory:[],lastEngineResult:null,campaignContext:{currentSituation:'',establishedFacts:[],unresolvedThreads:[],knownEntities:[]}});
 let state=defaultState();
 let modelReady=false;
-let discoveredModels=[];
-let discoveryError='';
+let connectionError='';
+const publicExpressions={};
 const API_BASE_KEY='polyhedron-api-base-url';
 let apiBase=localStorage.getItem(API_BASE_KEY)||'';
 async function apiFetch(route,options={}){const base=(apiBase||'').trim().replace(/\/$/,'');return fetch(base+route,options);}
@@ -93,41 +93,33 @@ function render(){
  if(state.phase==='play')return play();
 }
 function modelSelection(){
- const title=document.getElementById('topbarTitle');if(title)title.textContent='Model Selection';
- const local=discoveredModels.filter(endpoint=>endpoint.source!=='environment-configured').flatMap((endpoint,endpointIndex)=>(endpoint.models||[]).map(model=>({baseUrl:endpoint.baseUrl,model,source:'local-discovery',port:endpoint.port,key:`local-${endpoint.port||endpointIndex}-${model}`})));
- const configured=discoveredModels.filter(x=>x.configured).flatMap((x,i)=>(x.models||[x.model]).map(model=>({baseUrl:x.baseUrl,model,source:'environment-configured',key:`configured-${i}-${model}`})));
- const all=[...local,...configured];
- app.innerHTML=`<section class="panel model-landing"><div class="eyebrow">POLYHEDRON · CONNECTION SETUP</div><h2>Choose your game master</h2><p class="instruction">Polyhedron scans compatible model services on the server running this application. Choose a detected model or configure a cloud endpoint. The game remains unavailable until a model connection is verified.</p>
- <div class="backend-config"><label>Polyhedron game server URL <span class="muted small">Leave blank when opening the app directly from the Node server.</span><input id="backendUrl" type="url" value="${esc(apiBase)}" placeholder="https://your-polyhedron-server.example"></label><button class="secondary" id="connectBackend">Use server and scan</button></div>
- <div class="model-toolbar"><div><strong>Detected models</strong><div class="muted small">${all.length?`${all.length} model option${all.length===1?'':'s'} found`:'No usable models detected yet'}</div></div><button class="secondary" id="rescanModels">↻ Rescan</button></div>
- <div class="model-list">${all.map((m,i)=>`<label class="model-option"><input type="radio" name="modelChoice" value="${i}"><span class="model-option-main"><strong>${esc(m.model)}</strong><small>${esc(m.baseUrl)}${m.port?` · port ${m.port}`:''}</small></span><span class="model-state">Detected</span></label>`).join('')||`<div class="notice">No local model API was found on the scanned ports. Start a model service and rescan, or configure a cloud model below.</div>`}</div>
- <button class="primary" id="useDetected" ${all.length?'':'disabled'}>Connect selected model</button>
- <div id="modelMessage" class="notice model-message ${discoveryError?'warning':''}">${esc(discoveryError||'Choose a detected model, or configure a cloud model below.')}</div>
- <div class="divider"></div><div class="cloud-heading"><div><h3>Configure a cloud model</h3><p class="muted">Recommended starting point: <code>gemma4:cloud</code>. This is a suggestion, not a claim that it is already available.</p></div><span class="cloud-tag">Cloud option</span></div>
- <div class="cloud-form"><label>API base URL<input id="cloudUrl" type="url" placeholder="https://ollama.com/v1"></label><label>Model identifier<input id="cloudModel" type="text" value="gemma4:cloud" placeholder="e.g. gemma4:cloud"></label><label>API key<input id="cloudKey" type="password" autocomplete="off" placeholder="Provider API key (kept in server memory only)"></label><button class="primary" id="connectCloud">Verify and connect cloud model</button></div>
- <p class="muted small">If the model is not running or credentials are missing, Polyhedron will explain what needs attention. Start/configure the model outside the browser if needed, then retry. Model selection is not stored in campaign exports.</p></section>`;
- document.getElementById('rescanModels').onclick=()=>scanModels(true);
- document.getElementById('connectBackend').onclick=()=>{const value=document.getElementById('backendUrl').value.trim().replace(/\/$/,'');if(value&&!/^https?:\/\//i.test(value))return showModelMessage('The server URL must begin with https:// or http://.','warning');apiBase=value;localStorage.setItem(API_BASE_KEY,apiBase);scanModels(true)};
- document.getElementById('useDetected').onclick=async()=>{const choice=document.querySelector('input[name="modelChoice"]:checked');if(!choice)return showModelMessage('Select a model first.','warning');const m=all[Number(choice.value)];await selectModel(m)};
- document.getElementById('connectCloud').onclick=async()=>{const baseUrl=document.getElementById('cloudUrl').value.trim();const model=document.getElementById('cloudModel').value.trim();const apiKey=document.getElementById('cloudKey').value.trim();if(!baseUrl||!model)return showModelMessage('Enter the cloud API base URL and model identifier.','warning');await selectModel({baseUrl,model,apiKey,source:'cloud-configured'})};
+ const title=document.getElementById('topbarTitle');if(title)title.textContent='Game Server';
+ app.innerHTML=`<section class="panel model-landing"><div class="eyebrow">POLYHEDRON · SERVER CONNECTION</div>
+ <h2>Connect to Polyhedron</h2>
+ <p class="instruction">The Game Master model is defined privately on the game server. Players cannot change the model or enter an LLM API key.</p>
+ <div class="backend-config"><label>Polyhedron game server URL <span class="muted small">Leave blank only when this page is hosted by the Node game server.</span><input id="backendUrl" type="url" value="${esc(apiBase)}" placeholder="https://your-polyhedron-server.onrender.com"></label>
+ <button class="primary" id="connectBackend">Connect to game server</button></div>
+ <div class="notice model-message ${connectionError?'warning':''}" id="modelMessage">${esc(connectionError||'Checking the game server…')}</div>
+ </section>`;
+ document.getElementById('connectBackend').onclick=()=>{
+  const value=document.getElementById('backendUrl').value.trim().replace(/\/$/,'');
+  if(value&&!/^https?:\/\//i.test(value))return showModelMessage('Enter the complete game server address, beginning with https://.','warning');
+  apiBase=value;localStorage.setItem(API_BASE_KEY,apiBase);connectGameServer();
+ };
 }
-function showModelMessage(message,kind=''){const el=document.getElementById('modelMessage');if(el){el.textContent=message;el.className='notice model-message '+(kind==='warning'?'warning':kind==='success'?'success':'')}}
-async function scanModels(force=false){
- const button=document.getElementById('rescanModels');if(button){button.disabled=true;button.textContent='Scanning…'}
- discoveryError='';
- try{const response=await apiFetch('/api/llm/discover',{cache:'no-store'});const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Model discovery failed.');discoveredModels=[...(data.discovered||[]),...(data.configured||[])];}
- catch(err){discoveredModels=[];discoveryError=`Could not contact the Polyhedron server: ${err.message}. If this page is hosted on GitHub Pages, enter the reachable HTTPS game-server URL above, then choose Use server and scan.`}
- modelSelection();
+function showModelMessage(message,kind=''){
+ const el=document.getElementById('modelMessage');if(el){el.textContent=message;el.className='notice model-message '+(kind==='warning'?'warning':kind==='success'?'success':'')}
 }
-async function selectModel(model){
- showModelMessage(`Verifying ${model.model}…`);
- const buttons=[document.getElementById('useDetected'),document.getElementById('connectCloud')].filter(Boolean);buttons.forEach(b=>{b.disabled=true});
+async function connectGameServer(){
  try{
-  const response=await apiFetch('/api/llm/select',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(model)});const data=await response.json();
-  if(!response.ok||!data.ok)throw new Error(data.error||'The selected model could not be verified.');
-  modelReady=true;render();
- }catch(err){showModelMessage(`${err.message} No model was selected, so the game cannot start. Check the URL/model/credentials, launch the model if necessary, then retry or rescan.`,'warning')}
- finally{buttons.forEach(b=>{b.disabled=false})}
+  const response=await apiFetch('/api/bootstrap',{cache:'no-store'});
+  const data=await response.json();
+  if(!response.ok||!data.ok||!data.modelConfigured)throw new Error(data.error||'The server has not been configured with a Game Master model.');
+  for(const key of Object.keys(publicExpressions))delete publicExpressions[key];
+  Object.assign(publicExpressions,data.expressionNames||{});
+  if(!Object.keys(publicExpressions).length)throw new Error('The server did not supply the Expression names required by the character sheet.');
+  connectionError='';modelReady=true;render();
+ }catch(err){modelReady=false;connectionError=`Unable to connect: ${err.message}`;modelSelection();}
 }
 function opening(){app.innerHTML=`<section class="panel opening"><div class="stephead"><h2>Campaign Opening</h2><span class="step">01 / 06</span></div>${OPENING.map((p,i)=>`<p class="${i===0?'lead':''}">${p}</p>`).join('')}<div class="divider"></div><div class="actions"><button class="primary" id="begin">Continue</button></div></section>`;document.getElementById('begin').onclick=()=>{state.phase='method';save();render()}}
 function method(){app.innerHTML=`<section class="panel"><div class="stephead"><h2>Choose your Polyhedron rolling method</h2><span class="step">02 / 06</span></div><p class="instruction">The campaign opening is complete. Choose how the nine functional results will be generated.</p><div class="choices"><button class="choice" id="player"><strong>1 — Player Rolls</strong><span>You provide each Polyhedron result one at a time. The engine resolves each result before asking for the next.</span></button><button class="choice" id="engine"><strong>2 — LLM Rolls</strong><span>The engine performs the entire Polyhedron sequence automatically, revealing each result until nine functional Glyph results exist.</span></button></div></section>`;document.getElementById('player').onclick=()=>startRolling('player');document.getElementById('engine').onclick=()=>startRolling('engine')}
@@ -160,7 +152,7 @@ function findExpression(text){
  const q=text.toLowerCase();
  const candidates=[];
  state.character.glyphs.forEach(g=>{
-  g.tiers.filter(t=>t.unlocked).forEach(t=>{const e=EXPRESSIONS[String(g.name).toUpperCase()]?.[String(t.tier)];if(!e)return;const needles=[e.name,g.name+' '+e.name];if(needles.some(n=>q.includes(n.toLowerCase())))candidates.push({glyph:g,tier:t,expression:e})});
+  g.tiers.filter(t=>t.unlocked).forEach(t=>{const e=publicExpressions[String(g.name).toUpperCase()]?.[String(t.tier)];if(!e)return;const needles=[e.name,g.name+' '+e.name];if(needles.some(n=>q.includes(n.toLowerCase())))candidates.push({glyph:g,tier:t,expression:e})});
  });
  return candidates.sort((a,b)=>b.expression.name.length-a.expression.name.length)[0]||null;
 }
@@ -221,7 +213,7 @@ function expressionFromUse(use){
  if(!g)return null;
  const tierNum=Number(use.tier);
  const t=g.tiers[tierNum-1];
- const e=EXPRESSIONS[String(g.name).toUpperCase()]?.[String(tierNum)];
+ const e=publicExpressions[String(g.name).toUpperCase()]?.[String(tierNum)];
  if(!t || !t.unlocked || !e || e.name.toLowerCase()!==String(use.name||'').toLowerCase())return null;
  return {glyph:g,tier:t,expression:e};
 }
@@ -329,7 +321,8 @@ function importCharacter(file){
  reader.onerror=()=>alert('Import failed: the campaign file could not be read.');
  reader.readAsText(file);
 }
-document.getElementById('changeModelBtn').onclick=async()=>{modelReady=false;try{await apiFetch('/api/llm/clear',{method:'POST'});}catch{}scanModels();};
+document.getElementById('changeModelBtn').textContent='Game Server';
+document.getElementById('changeModelBtn').onclick=()=>{modelReady=false;connectionError='';modelSelection();};
 document.getElementById('resetBtn').onclick=()=>{
  if(confirm('Start a new campaign? The current campaign will remain available only if you have exported it.')){
   state=defaultState();
@@ -344,4 +337,4 @@ document.getElementById('importFile').addEventListener('change',e=>{
  if(file)importCharacter(file);
  e.target.value='';
 });
-scanModels();
+connectGameServer();

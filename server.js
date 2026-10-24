@@ -5,8 +5,6 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const dns = require('node:dns').promises;
-const net = require('node:net');
 const EXPRESSIONS = require('./expressions.js');
 
 const ROOT = __dirname;
@@ -14,12 +12,18 @@ const PORT = Number(process.env.PORT || 3000);
 const LLM_BASE_URL = String(process.env.LLM_BASE_URL || '').trim().replace(/\/$/, '');
 const CONFIGURED_MODEL = String(process.env.LLM_MODEL || '').trim();
 const LLM_API_KEY = String(process.env.LLM_API_KEY || '').trim();
-const DISCOVERY_TIMEOUT_MS = Math.max(200, Math.min(3000, Number(process.env.LLM_DISCOVERY_TIMEOUT_MS || 800)));
-const DISCOVERY_PORTS = [...new Set(String(process.env.LLM_DISCOVERY_PORTS || '11434,1234,8080,1337,8000,5000,5001').split(',').map(x => Number(x.trim())).filter(x => Number.isInteger(x) && x > 0 && x < 65536))];
-let discoveryCache = { at:0, results:[] };
-// A model is never activated merely because it appears first in discovery.
-// The player must explicitly select and verify a target each application launch.
-let activeModel = null;
+// One model per server. Neither provider URL nor credentials are writable through the API.
+function configuredTarget(){
+ if(!LLM_BASE_URL||!CONFIGURED_MODEL)return null;
+ let parsed;
+ try{parsed=new URL(LLM_BASE_URL);}catch{throw new Error('Invalid LLM_BASE_URL in server configuration.');}
+ if(!['http:','https:'].includes(parsed.protocol)||parsed.username||parsed.password||parsed.search||parsed.hash){
+  throw new Error('LLM_BASE_URL must be a clean HTTP(S) model API address.');
+ }
+ if(process.env.RENDER && parsed.protocol!=='https:')throw new Error('Render requires an HTTPS model API URL.');
+ return {baseUrl:LLM_BASE_URL,model:CONFIGURED_MODEL,apiKey:LLM_API_KEY,source:'server-configured'};
+}
+const FIXED_MODEL=configuredTarget();
 const TEST_MODE = !/^(0|false|off|no)$/i.test(process.env.POLYHEDRON_TEST_MODE || 'true');
 const TEST_MASTERY_AWARD = Math.max(1, Math.min(100, Number(process.env.POLYHEDRON_TEST_MASTERY || 100)));
 const MAX_BODY = 2_000_000;
@@ -32,6 +36,9 @@ if (!fs.existsSync(canonPath)) {
   console.error('FATAL: private canon.md is missing. Polyhedron will not start without its complete Canon.');
   process.exit(1);
 }
+const PUBLIC_EXPRESSION_NAMES=Object.fromEntries(Object.entries(EXPRESSIONS).map(([glyph,tiers])=>
+ [glyph,Object.fromEntries(Object.entries(tiers).filter(([key])=>/^\d+$/.test(key)).map(([key,tier])=>[key,{name:tier.name}]))]
+));
 const CANON = fs.readFileSync(canonPath, 'utf8');
 if (CANON.trim().length < 1000) {
   console.error('FATAL: canon.md appears incomplete. Polyhedron will not start.');
@@ -60,94 +67,18 @@ function parseJson(raw) {
   if (a >= 0 && b > a) { try { return JSON.parse(s.slice(a, b + 1)); } catch {} }
   throw new Error('The selected model did not return the required JSON response. Try again or choose a model that follows structured-output instructions.');
 }
-function modelIds(json) {
-  const ids = [];
-  if (Array.isArray(json?.data)) for (const item of json.data) if (item?.id) ids.push(String(item.id));
-  if (Array.isArray(json?.models)) for (const item of json.models) {
-    const id = item?.name || item?.model;
-    if (id) ids.push(String(id));
-  }
-  return [...new Set(ids)];
-}
-async function getJson(url, timeout = DISCOVERY_TIMEOUT_MS) {
-  try {
-    const response = await fetch(url, { signal:AbortSignal.timeout(timeout) });
-    if (!response.ok) return null;
-    return await response.json();
-  } catch { return null; }
-}
-async function probeLocalEndpoint(port) {
-  const origin = `http://127.0.0.1:${port}`;
-  // Prefer currently loaded models where the service exposes that information.
-  const [loaded, tags, openAi] = await Promise.all([
-    getJson(`${origin}/api/ps`), getJson(`${origin}/api/tags`), getJson(`${origin}/v1/models`)
-  ]);
-  // Union all exposed model lists: loaded-only endpoints must not hide other available models.
-  const ids = [...new Set([...modelIds(loaded), ...modelIds(openAi), ...modelIds(tags)])];
-  if (!ids.length) return null;
-  return { baseUrl:`${origin}/v1`, model:ids[0], models:ids, loadedModels:modelIds(loaded), source:'local-discovery', port };
-}
-async function discoverLocalModels(force = false) {
-  if (!force && Date.now() - discoveryCache.at < 10000) return discoveryCache.results;
-  const found = await Promise.all(DISCOVERY_PORTS.map(probeLocalEndpoint));
-  discoveryCache = { at:Date.now(), results:found.filter(Boolean) };
-  return discoveryCache.results;
-}
-async function resolveModel() {
-  if (activeModel) return { ...activeModel, source:activeModel.source || 'explicit-selection' };
-  throw new Error('No language model has been selected for this session. Choose a detected model or configure a cloud model on the Polyhedron landing page.');
-}
-function isPrivateIp(address) {
-  if (net.isIPv4(address)) {
-    const [a,b] = address.split('.').map(Number);
-    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
-  }
-  if (net.isIPv6(address)) {
-    const ip = address.toLowerCase();
-    return ip === '::1' || ip === '::' || ip.startsWith('fc') || ip.startsWith('fd') || /^fe[89ab]/.test(ip) || ip.startsWith('::ffff:127.') || ip.startsWith('::ffff:10.') || ip.startsWith('::ffff:192.168.');
-  }
-  return true;
-}
-async function assertPublicCloudEndpoint(baseUrl, source) {
-  if (source === 'local-discovery' || source === 'environment-configured') return;
-  const host = new URL(baseUrl).hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) throw new Error('Cloud endpoints must use a public hostname. Select a discovered local model for local services.');
-  const addresses = net.isIP(host) ? [{address:host}] : await dns.lookup(host, { all:true }).catch(() => []);
-  if (!addresses.length || addresses.some(item => isPrivateIp(item.address))) throw new Error('The cloud endpoint must resolve to a public IP address. Private and local network endpoints are blocked for safety.');
-}
-async function verifyTarget(target) {
-  const baseUrl = String(target?.baseUrl || '').trim().replace(/\/$/, '');
-  const model = String(target?.model || '').trim();
-  const apiKey = String(target?.apiKey || '').trim();
-  const source = target?.source || 'cloud-configured';
-  if (!/^https?:\/\//i.test(baseUrl)) throw new Error('Enter a valid model API base URL, including https:// or http://.');
-  if (!model) throw new Error('Enter or select a model identifier.');
-  if (source === 'local-discovery') {
-    const known = await discoverLocalModels(true);
-    if (!known.some(item => item.baseUrl === baseUrl && item.models.includes(model))) throw new Error('That local model is no longer in the discovery results. Rescan and select an available model.');
-  } else {
-    await assertPublicCloudEndpoint(baseUrl, source);
-  }
-  const headers = {};
-  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-  let response;
-  try { response = await fetch(`${baseUrl}/models`, { headers, signal:AbortSignal.timeout(8000) }); }
-  catch (error) { throw new Error(`Could not reach the model API at ${baseUrl}. Check the endpoint, network access, and whether the service is running.`); }
-  if (!response.ok) throw new Error(`The model API check failed (${response.status}). Check the endpoint and credentials.`);
-  let json;
-  try { json = await response.json(); } catch { throw new Error('The model API did not return a valid model list.'); }
-  const ids = modelIds(json);
-  if (ids.length && !ids.includes(model)) throw new Error(`The API responded, but did not list '${model}'. Available models: ${ids.join(', ')}.`);
-  return { baseUrl, model, apiKey, source, verifiedAt:new Date().toISOString() };
+async function resolveModel(){
+ if(!FIXED_MODEL)throw new Error('The game server needs LLM_BASE_URL and LLM_MODEL defined privately in its environment.');
+ return FIXED_MODEL;
 }
 async function callModel(messages, temperature = 0.4) {
   const target = await resolveModel();
   const headers = { 'Content-Type':'application/json' };
   if (target.apiKey || LLM_API_KEY) headers.Authorization = `Bearer ${target.apiKey || LLM_API_KEY}`;
   const body = { model:target.model, stream:false, messages, temperature, response_format:{ type:'json_object' } };
-  const response = await fetch(`${target.baseUrl}/chat/completions`, { method:'POST', headers, body:JSON.stringify(body), signal:AbortSignal.timeout(180000) });
+  const response = await fetch(`${target.baseUrl}/chat/completions`, { method:'POST', headers, body:JSON.stringify(body), redirect:'error', signal:AbortSignal.timeout(180000) });
   const text = await response.text();
-  if (!response.ok) throw new Error(`LLM request failed (${response.status}) at ${target.baseUrl}: ${text.slice(0, 700)}`);
+  if (!response.ok) throw new Error(`LLM request failed (${response.status}). Check the trusted provider configuration on Render.`);
   let json;
   try { json = JSON.parse(text); } catch { throw new Error('The model provider returned an invalid response.'); }
   const content = json.choices?.[0]?.message?.content;
@@ -249,57 +180,45 @@ ${CANON}
     establishedFacts:cleanStrings(parsed.establishedFacts),
     unresolvedThreads:cleanStrings(parsed.unresolvedThreads),
     currentSituation:typeof parsed.currentSituation === 'string' ? parsed.currentSituation.trim() : '',
-    diagnostics:{ endpointConfigured:Boolean(answer.baseUrl), endpoint:answer.baseUrl, model:answer.model, modelSource:answer.source, canonLoaded:true, canonCharacters:CANON.length, canonBytes:Buffer.byteLength(CANON), testMode:TEST_MODE }
+    diagnostics:{ endpointConfigured:Boolean(FIXED_MODEL), model:answer.model, canonLoaded:true, testMode:TEST_MODE }
   };
 }
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'Access-Control-Allow-Origin':'*', 'Access-Control-Allow-Headers':'Content-Type', 'Access-Control-Allow-Methods':'GET, POST, OPTIONS', 'Access-Control-Max-Age':'600' }); return res.end(); }
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  if (req.method === 'GET' && url.pathname === '/api/llm/discover') {
-    try {
-      const discovered = await discoverLocalModels(true);
-      const configured = LLM_BASE_URL && CONFIGURED_MODEL ? [{ baseUrl:LLM_BASE_URL, model:CONFIGURED_MODEL, models:[CONFIGURED_MODEL], source:'environment-configured', configured:true }] : [];
-      return send(res, 200, { ok:true, selected:activeModel ? { baseUrl:activeModel.baseUrl, model:activeModel.model, source:activeModel.source } : null, discovered, configured });
-    } catch (error) { return send(res, 200, { ok:false, selected:null, discovered:[], configured:[], error:error.message }); }
+  if(url.pathname.startsWith('/api/llm/')){
+    return send(res,403,{ok:false,error:'Public model discovery, selection, and credential changes are disabled. The trusted model is configured on the server.'});
   }
-  if (req.method === 'POST' && url.pathname === '/api/llm/select') {
-    try {
-      const payload = await readBody(req);
-      const target = {
-        baseUrl:payload.baseUrl || LLM_BASE_URL,
-        model:payload.model || CONFIGURED_MODEL,
-        apiKey:payload.apiKey || LLM_API_KEY,
-        source:payload.source || 'explicit-selection'
-      };
-      const verified = await verifyTarget(target);
-      activeModel = verified;
-      return send(res, 200, { ok:true, selected:{ baseUrl:activeModel.baseUrl, model:activeModel.model, source:activeModel.source }, message:`Connected to ${activeModel.model}.` });
-    } catch (error) { activeModel = null; return send(res, 400, { ok:false, error:error.message }); }
+  if(req.method==='GET' && url.pathname==='/api/bootstrap'){
+    return send(res,FIXED_MODEL?200:503,{
+      ok:Boolean(FIXED_MODEL),modelConfigured:Boolean(FIXED_MODEL),model:CONFIGURED_MODEL||null,
+      expressionNames:PUBLIC_EXPRESSION_NAMES,
+      ...(FIXED_MODEL?{}:{error:'Define LLM_BASE_URL and LLM_MODEL in the Render environment.'})
+    });
   }
-  if (req.method === 'POST' && url.pathname === '/api/llm/clear') {
-    activeModel = null;
-    return send(res, 200, { ok:true, selected:null });
-  }
-  if (req.method === 'GET' && url.pathname === '/api/health') {
-    return send(res, 200, { ok:true, canonLoaded:true, canonCharacters:CANON.length, canonBytes:Buffer.byteLength(CANON), endpointConfigured:Boolean(activeModel), endpoint:activeModel?.baseUrl || null, model:activeModel?.model || null, modelSelected:Boolean(activeModel), modelSource:activeModel?.source || null, discoveredLocalModels:(await discoverLocalModels()).map(x=>({baseUrl:x.baseUrl,models:x.models,source:x.source,port:x.port})), testMode:TEST_MODE, testMasteryAward:TEST_MODE ? TEST_MASTERY_AWARD : null });
+  if(req.method==='GET' && url.pathname==='/api/health'){
+    return send(res,200,{ok:true,canonLoaded:true,modelConfigured:Boolean(FIXED_MODEL),model:CONFIGURED_MODEL||null,testMode:TEST_MODE,testMasteryAward:TEST_MODE?TEST_MASTERY_AWARD:null});
   }
   if (req.method === 'POST' && url.pathname === '/api/turn') {
     try { const payload = await readBody(req); if (!String(payload.action || '').trim()) return send(res, 400, { error:'An action is required.' }); return send(res, 200, await runTurn(payload)); }
     catch (error) { return send(res, 502, { error:error.message, canonLoaded:true, canonCharacters:CANON.length }); }
   }
   let requested;
-  try { requested = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname); }
-  catch { return send(res, 400, { error:'Invalid path' }); }
-  // Never serve the Canon, hidden files, or secrets from the public web root.
-  if (requested.split('/').some(part => part.startsWith('.')) || requested.toLowerCase() === '/canon.md') return send(res, 404, { error:'Not found' });
-  const filePath = path.resolve(ROOT, `.${requested}`);
-  if (!filePath.startsWith(ROOT + path.sep) || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) return send(res, 404, { error:'Not found' });
-  res.writeHead(200, { 'Content-Type':MIME[path.extname(filePath)] || 'application/octet-stream', 'Cache-Control':'no-store' });
+  try { requested=decodeURIComponent(url.pathname==='/'?'/index.html':url.pathname); }
+  catch {return send(res,400,{error:'Invalid path'});}
+  const safeRootFiles=new Set(['/index.html','/app.js','/rules.js','/styles.css','/favicon.ico']);
+  const isAsset=/^\/assets\/[a-zA-Z0-9_.\/-]+\.(?:png|jpg|jpeg|webp|gif|svg|ico)$/i.test(requested)
+    && !requested.split('/').some(segment=>segment==='..'||segment.startsWith('.'));
+  if(!safeRootFiles.has(requested)&&!isAsset)return send(res,404,{error:'Not found'});
+  const filePath=path.resolve(ROOT,`.${requested}`);
+  if(!filePath.startsWith(ROOT+path.sep)||!fs.existsSync(filePath)||!fs.statSync(filePath).isFile())return send(res,404,{error:'Not found'});
+  const assetMime={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.gif':'image/gif','.svg':'image/svg+xml','.ico':'image/x-icon'};
+  res.writeHead(200,{'Content-Type':MIME[path.extname(filePath)]||assetMime[path.extname(filePath)]||'application/octet-stream','Cache-Control':'no-store'});
   fs.createReadStream(filePath).pipe(res);
 });
 server.listen(PORT, () => {
   console.log(`Polyhedron server listening at http://localhost:${PORT}`);
   console.log(`Canon loaded: ${Buffer.byteLength(CANON)} bytes / ${CANON.length} characters`);
-  console.log('LLM API: explicit model selection required; discovery never auto-selects a model.');
+  console.log(`LLM API: fixed server-defined model ${CONFIGURED_MODEL||'(not configured)'}. Public selection disabled.`);
   console.log(`Temporary mastery test mode: ${TEST_MODE ? `ON (+${TEST_MASTERY_AWARD}% per validated Expression activation)` : 'OFF'}`);
 });
