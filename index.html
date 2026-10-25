@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Polyhedron</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* Immediate loading screen: starts on GitHub Pages before Render's JS arrives. */
+  #polyhedronLoading {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: radial-gradient(ellipse at 50% 43%, #231913 0%, #111116 47%, #08090d 100%);
+    color: #eee9de;
+    text-align: center;
+    transition: opacity .45s ease, visibility .45s ease;
+  }
+  #polyhedronLoading.is-finished { opacity: 0; visibility: hidden; pointer-events: none; }
+  .poly-loading-content { width: min(100%, 440px); }
+  .poly-loading-image-wrap {
+    position: relative;
+    display: grid;
+    place-items: center;
+    height: 240px;
+    margin: 0 auto 14px;
+    isolation: isolate;
+  }
+  .poly-loading-image-wrap::before {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    width: 184px;
+    height: 184px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(224,108,40,.27), rgba(176,75,27,.07) 54%, transparent 72%);
+    filter: blur(12px);
+    animation: polyAura 3.5s ease-in-out infinite;
+  }
+  .poly-loading-ring {
+    position: absolute;
+    box-sizing: border-box;
+    width: 215px;
+    height: 215px;
+    border: 1px solid rgba(218,150,85,.20);
+    border-top-color: rgba(255,192,113,.8);
+    border-bottom-color: rgba(255,192,113,.45);
+    border-radius: 50%;
+    box-shadow: 0 0 17px rgba(229,130,59,.12);
+    animation: polyOrbit 9s linear infinite;
+  }
+  .poly-loading-ring.second {
+    width: 232px;
+    height: 232px;
+    border-color: rgba(218,150,85,.09);
+    border-left-color: rgba(255,192,113,.48);
+    border-right-color: rgba(255,192,113,.30);
+    animation-duration: 15s;
+    animation-direction: reverse;
+  }
+  .poly-loading-icon {
+    display: block;
+    position: relative;
+    width: 194px;
+    height: 194px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 12px rgba(221,108,42,.25));
+  }
+  .poly-loading-eyebrow {
+    color: #cbaa79;
+    font: 700 12px/1.5 system-ui, sans-serif;
+    letter-spacing: .38em;
+    margin-bottom: 10px;
+  }
+  .poly-loading-title {
+    margin: 0;
+    font: 500 clamp(23px, 4vw, 30px)/1.25 Georgia, 'Times New Roman', serif;
+    letter-spacing: .01em;
+  }
+  .poly-loading-hint {
+    min-height: 40px;
+    margin: 14px 0 0;
+    color: #b6aca0;
+    font: 14px/1.6 system-ui, sans-serif;
+  }
+  #polyLoaderRetry {
+    display: none;
+    margin-top: 6px;
+    padding: 10px 16px;
+    border: 1px solid #705136;
+    border-radius: 9px;
+    color: #f0dfbd;
+    background: #261c18;
+    font: 600 13px/1.4 system-ui, sans-serif;
+    cursor: pointer;
+  }
+  #polyLoaderRetry.is-visible { display: inline-block; }
+  @keyframes polyOrbit { to { transform: rotate(360deg); } }
+  @keyframes polyAura {
+    0%, 100% { transform: scale(.92); opacity: .62; }
+    50% { transform: scale(1.13); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .poly-loading-ring, .poly-loading-image-wrap::before { animation: none; }
+    #polyhedronLoading { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div id="polyhedronLoading" role="status" aria-live="polite" aria-label="Connecting to Polyhedron">
+  <div class="poly-loading-content">
+    <div class="poly-loading-image-wrap" aria-hidden="true">
+      <div class="poly-loading-ring"></div>
+      <div class="poly-loading-ring second"></div>
+      <img class="poly-loading-icon" src="assets/polyhedron-icon.png" alt="" width="194" height="194">
+    </div>
+    <div class="poly-loading-eyebrow">POLYHEDRON</div>
+    <h2 class="poly-loading-title">Waking the Game Master…</h2>
+    <p id="polyLoaderHint" class="poly-loading-hint">Preparing your adventure.</p>
+    <button type="button" id="polyLoaderRetry" onclick="window.location.reload()">Retry connection</button>
+  </div>
+</div>
+<div class="shell">
+  <header class="topbar">
+    <div><div class="eyebrow">POLYHEDRON</div><h1 id="topbarTitle">Campaign</h1></div>
+    <div class="status campaign-controls">
+      <button id="changeModelBtn" class="ghost">Game Server</button>
+      <button id="resetBtn" class="ghost">New Campaign</button>
+      <button id="importBtn" class="ghost">Import</button>
+      <button id="exportBtn" class="ghost">Export</button>
+      <input id="importFile" type="file" accept="application/json,.json" hidden>
+    </div>
+  </header>
+  <main id="app"></main>
+</div>
+<script>
+  // Configure the public game server before the application initializes.
+  localStorage.setItem('polyhedron-api-base-url', 'https://polyhedron-server.onrender.com');
+</script>
+<script>
+  // Observe the existing app rather than change its gameplay or connection logic.
+  (() => {
+    const splash = document.getElementById('polyhedronLoading');
+    const main = document.getElementById('app');
+    const hint = document.getElementById('polyLoaderHint');
+    const retry = document.getElementById('polyLoaderRetry');
+    let closed = false;
+    let failed = false;
+
+    const splashStarted = Date.now();
+
+const closeSplash = () => {
+  if (closed) return;
+  closed = true;
+  observer.disconnect();
+  clearTimeout(slowMessage);
+  clearTimeout(retryMessage);
+
+  const remaining = Math.max(0, 5000 - (Date.now() - splashStarted));
+
+  setTimeout(() => {
+    splash.classList.add('is-finished');
+    setTimeout(() => splash.remove(), 500);
+  }, remaining);
+};
+
+    const checkGame = () => {
+      if (closed || failed) return;
+      const screen = main.firstElementChild;
+      // The game's normal opening (or an imported campaign) has appeared.
+      if (screen && !screen.classList.contains('model-landing')) {
+        closeSplash();
+        return;
+      }
+      // Render responded with an error; expose the existing connection screen.
+      if (main.querySelector('.model-landing .notice.warning')) closeSplash();
+    };
+
+    const observer = new MutationObserver(checkGame);
+    observer.observe(main, {childList: true, subtree: true});
+
+    const slowMessage = setTimeout(() => {
+      if (!closed && !failed) hint.textContent = 'The Game Master may be waking from a deep sleep. Gathering his thoughts…';
+    }, 16000);
+    const retryMessage = setTimeout(() => {
+      if (!closed && !failed) {
+        hint.textContent = 'The connection is taking longer than usual. You can retry if needed.';
+        retry.classList.add('is-visible');
+      }
+    }, 75000);
+
+    window.polyhedronScriptError = (name) => {
+      if (closed) return;
+      failed = true;
+      hint.textContent = 'A game file could not be loaded (' + name + '). Check your connection and try again.';
+      retry.classList.add('is-visible');
+      clearTimeout(slowMessage);
+      clearTimeout(retryMessage);
+    };
+    checkGame();
+  })();
+</script>
+<script src="https://polyhedron-server.onrender.com/rules.js" onerror="window.polyhedronScriptError && window.polyhedronScriptError('rules.js')"></script>
+<script src="https://polyhedron-server.onrender.com/app.js" onerror="window.polyhedronScriptError && window.polyhedronScriptError('app.js')"></script>
+<script>
+  // Preserve the useful Game Server screen without trapping a running campaign.
+  // This is an interface-only change; the engine and campaign data are untouched.
+  (() => {
+    const gameServerButton = document.getElementById('changeModelBtn');
+    const originalOpenGameServer = gameServerButton.onclick;
+    let returnServerUrl = null;
+
+    gameServerButton.onclick = () => {
+      if (modelReady) returnServerUrl = apiBase;
+      originalOpenGameServer();
+      if (returnServerUrl === null) return;
+
+      const landing = document.querySelector('.model-landing');
+      if (!landing) return;
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const backButton = document.createElement('button');
+      backButton.type = 'button';
+      backButton.className = 'secondary';
+      backButton.textContent = '← Return to Campaign';
+      backButton.onclick = () => {
+        apiBase = returnServerUrl;
+        localStorage.setItem('polyhedron-api-base-url', apiBase);
+        returnServerUrl = null;
+        connectionError = '';
+        modelReady = true;
+        render();
+      };
+      actions.appendChild(backButton);
+      landing.appendChild(actions);
+    };
+  })();
+</script>
+</body>
+</html>

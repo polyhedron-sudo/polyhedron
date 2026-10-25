@@ -1,0 +1,14 @@
+{
+  "name": "polyhedron-canon-engine",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Model-agnostic Polyhedron campaign engine with complete Canon loading",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check app.js && node --check expressions.js && node --check rules.js && node --check tests/smoke.js",
+    "test": "node tests/smoke.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
