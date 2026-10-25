@@ -1,0 +1,17 @@
+# Server-only code and private game content
+server.js
+app.js
+rules.js
+canon.md
+expressions.js
+expressions.json
+
+# Environment and credentials
+.env
+.env.*
+*.pem
+*.key
+
+# Local dependencies and saves
+node_modules/
+polyhedron-campaign*.json
