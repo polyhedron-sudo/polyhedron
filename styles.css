@@ -50,15 +50,20 @@
 .topbar.in-campaign #resetBtn,
 .topbar.in-campaign #importBtn,
 .topbar.in-campaign #exportBtn {display:none}
-.campaign-header {gap:16px;align-items:flex-start;flex-wrap:wrap}
-.campaign-header-actions {display:flex;flex-direction:column;align-items:flex-end;gap:10px}
-.campaign-toolbar {display:flex;flex-wrap:wrap;justify-content:flex-end;gap:7px}
-.campaign-toolbar .ghost {font-size:12px;padding:8px 10px}
+.campaign-header {gap:16px;align-items:center}
+/* Character sidebar stays visible during story scrolling. Only its statistics/glyphs
+   scroll internally when the sheet grows taller than the available screen. */
+.character-sheet {display:flex;flex-direction:column;max-height:calc(100vh - 36px);overflow:hidden}
+.character-sheet-content {flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-gutter:stable}
+.character-sheet .campaign-toolbar {flex:0 0 auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding-top:14px;margin-top:14px;border-top:1px solid var(--line)}
+.character-sheet .campaign-toolbar #campaignNewBtn {grid-column:1/-1}
+.character-sheet .campaign-toolbar .ghost {font-size:12px;padding:9px 8px;min-width:0}
 .void-sheet-heading {display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
 .void-sheet-heading .sheet-heading {margin-bottom:0}
 .void-upgrade {display:grid;place-items:center;width:29px;height:29px;border:1px solid var(--accent);border-radius:7px;background:#272417;color:var(--accent);font-size:22px;line-height:1;cursor:pointer}
 .void-upgrade:hover,.void-upgrade:focus-visible {background:var(--accent);color:#17130c;outline:2px solid var(--accent);outline-offset:2px}
-@media(max-width:600px){
- .campaign-header-actions {align-items:flex-start;width:100%}
- .campaign-toolbar {justify-content:flex-start}
+@media(max-width:800px){
+ /* Mobile campaign stacks vertically; no nested scrolling in the character sheet. */
+ .character-sheet {max-height:none;overflow:visible}
+ .character-sheet-content {overflow:visible}
 }
