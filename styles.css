@@ -45,3 +45,20 @@
 .model-landing{max-width:900px;margin:0 auto}.model-landing h2{font-family:Georgia,serif;font-weight:500;font-size:32px;margin:10px 0}.model-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:24px 0 12px}.small{font-size:12px;line-height:1.55}.model-list{display:grid;gap:8px;margin:14px 0}.model-option{display:flex;align-items:center;gap:12px;padding:13px 14px;border:1px solid var(--line);background:#101217;border-radius:10px;cursor:pointer}.model-option:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}.model-option input{accent-color:var(--accent);width:17px;height:17px}.model-option-main{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}.model-option-main small{color:var(--muted);overflow-wrap:anywhere}.model-state,.cloud-tag{font-size:11px;color:var(--good);border:1px solid #385342;border-radius:99px;padding:5px 8px;white-space:nowrap}.model-message{margin-top:12px}.cloud-heading{display:flex;align-items:start;justify-content:space-between;gap:14px}.cloud-heading h3{margin:0 0 6px;font-size:19px}.cloud-heading p{margin:0 0 16px;line-height:1.5}.cloud-tag{color:var(--accent);border-color:#61502e}.cloud-form{display:grid;gap:12px}.cloud-form label{display:grid;gap:7px;font-size:13px;color:#ddd8ce}.cloud-form input{width:100%;background:#0b0d11;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:12px;font:inherit}.cloud-form input:focus{outline:1px solid var(--accent);border-color:var(--accent)}.model-landing code{background:#0c0e12;padding:2px 5px;border-radius:4px;color:#f1d99e}.campaign-controls{gap:8px;flex-wrap:wrap}@media(max-width:600px){.model-landing h2{font-size:26px}.model-option{align-items:flex-start}.model-state{font-size:10px}.model-toolbar{align-items:flex-start}.cloud-heading{flex-direction:column}.campaign-controls{width:100%}.campaign-controls button{flex:1}}
 
 .backend-config{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;padding:14px;border:1px solid var(--line);background:#0e1014;border-radius:10px;margin:20px 0}.backend-config label{display:grid;gap:6px;font-size:13px}.backend-config input{width:100%;background:#090b0e;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:11px;font:inherit}.backend-config input:focus{outline:1px solid var(--accent);border-color:var(--accent)}@media(max-width:600px){.backend-config{grid-template-columns:1fr}.backend-config button{width:100%}}
+
+/* Campaign controls and mid-campaign Void purchases */
+.topbar.in-campaign #resetBtn,
+.topbar.in-campaign #importBtn,
+.topbar.in-campaign #exportBtn {display:none}
+.campaign-header {gap:16px;align-items:flex-start;flex-wrap:wrap}
+.campaign-header-actions {display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+.campaign-toolbar {display:flex;flex-wrap:wrap;justify-content:flex-end;gap:7px}
+.campaign-toolbar .ghost {font-size:12px;padding:8px 10px}
+.void-sheet-heading {display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
+.void-sheet-heading .sheet-heading {margin-bottom:0}
+.void-upgrade {display:grid;place-items:center;width:29px;height:29px;border:1px solid var(--accent);border-radius:7px;background:#272417;color:var(--accent);font-size:22px;line-height:1;cursor:pointer}
+.void-upgrade:hover,.void-upgrade:focus-visible {background:var(--accent);color:#17130c;outline:2px solid var(--accent);outline-offset:2px}
+@media(max-width:600px){
+ .campaign-header-actions {align-items:flex-start;width:100%}
+ .campaign-toolbar {justify-content:flex-start}
+}
