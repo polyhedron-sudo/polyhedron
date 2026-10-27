@@ -30,9 +30,9 @@
     if (box) box.textContent = messages.join(' | ');
   };
   window.polyDiag = report;
-  window.addEventListener('error', event => report('ERROR: ' + (event.message || 'Resource error') + (event.filename ? ' at ' + event.filename.split('/').pop() + ':' + event.lineno : '')), true);
+  window.addEventListener('error', event => report('ERROR: ' + (event.message || 'Resource error') + (event.filename ? ' at ' + event.filename.split('/').pop() + ':' + event.lineno + ':' + event.colno : '')), true);
   window.addEventListener('unhandledrejection', event => report('PROMISE ERROR: ' + String(event.reason)));
-  window.polyhedronScriptError = name => report('FAILED TO LOAD: ' + name);
+  window.polyhedronScriptError = name => report('FAILED TO LOAD (possibly CORS): ' + name);
   window.setTimeout(() => {
     const app = document.getElementById('app');
     report(app && app.firstElementChild ? 'Game interface exists' : 'No campaign interface after 10 seconds');
@@ -43,8 +43,8 @@
   // Configure the public game server before the application initializes.
   localStorage.setItem('polyhedron-api-base-url', 'https://polyhedron-server.onrender.com');
 </script>
-<script src="https://polyhedron-server.onrender.com/rules.js" onload="window.polyDiag('rules.js loaded')" onerror="window.polyhedronScriptError('rules.js')"></script>
-<script src="https://polyhedron-server.onrender.com/app.js" onload="window.polyDiag('app.js loaded')" onerror="window.polyhedronScriptError('app.js')"></script>
+<script crossorigin="anonymous" src="https://polyhedron-server.onrender.com/rules.js" onload="window.polyDiag('rules.js loaded')" onerror="window.polyhedronScriptError('rules.js')"></script>
+<script crossorigin="anonymous" src="https://polyhedron-server.onrender.com/app.js" onload="window.polyDiag('app.js loaded')" onerror="window.polyhedronScriptError('app.js')"></script>
 <script>
   // Preserve the useful Game Server screen without trapping a running campaign.
   // This is an interface-only change; the engine and campaign data are untouched.
