@@ -6,7 +6,7 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div id="diagnostic" style="background:#1e222b;color:#e8e3d8;font:13px system-ui,sans-serif;padding:10px 14px;position:relative;z-index:10000">Diagnostic page — loading animation disabled. <span id="diagStatus">Waiting for game interface…</span></div>
+<div id="diagnostic" style="background:#1e222b;color:#e8e3d8;font:13px system-ui,sans-serif;padding:10px 14px;position:relative;z-index:10000">Diagnostic v6 — loading animation disabled. <span id="diagStatus">Waiting for game interface…</span></div>
 <div class="shell">
   <header class="topbar">
     <div><div class="eyebrow">POLYHEDRON</div><h1 id="topbarTitle">Campaign</h1></div>
@@ -47,11 +47,12 @@
 <script src="https://polyhedron-server.onrender.com/app.js" onload="window.polyDiag('app.js loaded')" onerror="window.polyhedronScriptError('app.js')"></script>
 <script>
 (() => {
-  const report = window.polyDiag || (() => {});
+  const report = window.polyDiag || (msg => { document.getElementById("diagStatus").textContent += " | " + msg; });
   const describe = (name, expression) => {
     try { report(name + ': ' + expression()); }
     catch (error) { report(name + ' check failed: ' + String(error)); }
   };
+  report('v6 checks started');
   describe('render function', () => typeof render);
   describe('modelReady', () => typeof modelReady === 'undefined' ? 'not initialized' : String(modelReady));
   describe('apiBase', () => typeof apiBase === 'undefined' ? 'not initialized' : 'initialized');
