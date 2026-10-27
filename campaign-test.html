@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Polyhedron — Campaign Diagnostic</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="diagnostic" style="background:#1e222b;color:#e8e3d8;font:13px system-ui,sans-serif;padding:10px 14px;position:relative;z-index:10000">Diagnostic page — loading animation disabled. <span id="diagStatus">Waiting for game interface…</span></div>
+<div class="shell">
+  <header class="topbar">
+    <div><div class="eyebrow">POLYHEDRON</div><h1 id="topbarTitle">Campaign</h1></div>
+    <div class="status campaign-controls">
+      <button id="changeModelBtn" class="ghost">Game Server</button>
+      <button id="resetBtn" class="ghost">New Campaign</button>
+      <button id="importBtn" class="ghost">Import</button>
+      <button id="exportBtn" class="ghost">Export</button>
+      <input id="importFile" type="file" accept="application/json,.json" hidden>
+    </div>
+  </header>
+  <main id="app"></main>
+</div>
+<script>
+  // Configure the public game server before the application initializes.
+  localStorage.setItem('polyhedron-api-base-url', 'https://polyhedron-server.onrender.com');
+</script>
+<script src="https://polyhedron-server.onrender.com/rules.js" onerror="window.polyhedronScriptError && window.polyhedronScriptError('rules.js')"></script>
+<script src="https://polyhedron-server.onrender.com/app.js" onerror="window.polyhedronScriptError && window.polyhedronScriptError('app.js')"></script>
+<script>
+  // Preserve the useful Game Server screen without trapping a running campaign.
+  // This is an interface-only change; the engine and campaign data are untouched.
+  (() => {
+    const gameServerButton = document.getElementById('changeModelBtn');
+    const originalOpenGameServer = gameServerButton.onclick;
+    let returnServerUrl = null;
+
+    gameServerButton.onclick = () => {
+      if (modelReady) returnServerUrl = apiBase;
+      originalOpenGameServer();
+      if (returnServerUrl === null) return;
+
+      const landing = document.querySelector('.model-landing');
+      if (!landing) return;
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const backButton = document.createElement('button');
+      backButton.type = 'button';
+      backButton.className = 'secondary';
+      backButton.textContent = '← Return to Campaign';
+      backButton.onclick = () => {
+        apiBase = returnServerUrl;
+        localStorage.setItem('polyhedron-api-base-url', apiBase);
+        returnServerUrl = null;
+        connectionError = '';
+        modelReady = true;
+        render();
+      };
+      actions.appendChild(backButton);
+      landing.appendChild(actions);
+    };
+  })();
+</script>
+<script>
+(() => {
+ const indicator = document.getElementById('diagStatus');
+ window.addEventListener('error', ev => { indicator.textContent = 'JavaScript error: ' + (ev.message || 'Script failed to load'); });
+ window.addEventListener('unhandledrejection', ev => { indicator.textContent = 'Startup promise failed: ' + String(ev.reason); });
+ const node = document.getElementById('app');
+ const observe = new MutationObserver(() => { if (node.firstElementChild) indicator.textContent = 'Game interface rendered.'; });
+ observe.observe(node, {childList:true,subtree:true});
+ if (node.firstElementChild) indicator.textContent = 'Game interface rendered.';
+ setTimeout(() => { if (!node.firstElementChild) indicator.textContent = 'No game interface detected after 10 seconds.'; }, 10000);
+})();
+</script>
+</body>
+</html>
