@@ -178,13 +178,12 @@ const closeSplash = () => {
     const checkGame = () => {
       if (closed || failed) return;
       const screen = main.firstElementChild;
-      // The game's normal opening (or an imported campaign) has appeared.
-      if (screen && !screen.classList.contains('model-landing')) {
+      // Reveal any initialized game screen, including Game Server selection.
+      // Otherwise the loading overlay can trap the player behind it.
+      if (screen) {
         closeSplash();
         return;
       }
-      // Render responded with an error; expose the existing connection screen.
-      if (main.querySelector('.model-landing .notice.warning')) closeSplash();
     };
 
     const observer = new MutationObserver(checkGame);
