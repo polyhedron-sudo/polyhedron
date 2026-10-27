@@ -67,3 +67,18 @@
  .character-sheet {max-height:none;overflow:visible}
  .character-sheet-content {overflow:visible}
 }
+
+/* Mobile-only character drawer; desktop layout is unchanged. */
+.mobile-sheet-toggle,.mobile-sheet-close,.mobile-sheet-backdrop{display:none}
+.campaign-header-actions{display:flex;align-items:center;gap:12px}
+@media(max-width:800px){
+  .mobile-sheet-toggle{display:inline-flex;align-items:center;justify-content:center;min-height:44px;font-size:14px}
+  .mobile-sheet-backdrop:not([hidden]){display:block;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.58)}
+  .campaign .character-sheet{position:fixed;z-index:1001;top:0;right:0;bottom:0;width:min(340px,88vw);max-height:none;height:100dvh;overflow:hidden;border-radius:12px 0 0 12px;transform:translateX(105%);visibility:hidden;pointer-events:none;transition:transform .22s ease,visibility .22s;box-shadow:-14px 0 40px rgba(0,0,0,.45);padding-top:56px}
+  .campaign .character-sheet.mobile-open{transform:translateX(0);visibility:visible;pointer-events:auto}
+  .campaign .character-sheet-content{overflow-y:auto;min-height:0;overscroll-behavior:contain}
+  .mobile-sheet-close{display:grid;place-items:center;position:absolute;top:10px;right:14px;width:40px;height:40px;border-radius:8px;background:#272b35;color:var(--text);font-size:29px}
+  .campaign-header{flex-wrap:wrap}
+  .action-box textarea,.backend-config input,.cloud-form input,#playerRoll{font-size:16px!important}
+}
+@media(prefers-reduced-motion:reduce){.campaign .character-sheet{transition:none}}
