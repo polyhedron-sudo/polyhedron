@@ -43,8 +43,8 @@
   // Configure the public game server before the application initializes.
   localStorage.setItem('polyhedron-api-base-url', 'https://polyhedron-server.onrender.com');
 </script>
-<script crossorigin="anonymous" src="https://polyhedron-server.onrender.com/rules.js" onload="window.polyDiag('rules.js loaded')" onerror="window.polyhedronScriptError('rules.js')"></script>
-<script crossorigin="anonymous" src="https://polyhedron-server.onrender.com/app.js" onload="window.polyDiag('app.js loaded')" onerror="window.polyhedronScriptError('app.js')"></script>
+<script src="https://polyhedron-server.onrender.com/rules.js" onload="window.polyDiag('rules.js loaded')" onerror="window.polyhedronScriptError('rules.js')"></script>
+<script src="https://polyhedron-server.onrender.com/app.js" onload="window.polyDiag('app.js loaded')" onerror="window.polyhedronScriptError('app.js')"></script>
 <script>
   // Preserve the useful Game Server screen without trapping a running campaign.
   // This is an interface-only change; the engine and campaign data are untouched.
