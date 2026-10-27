@@ -1,62 +1,82 @@
-// Optional character-name editor for the Polyhedron campaign interface.
-// The game engine remains on Render; state.character.name is exported with campaign JSON.
+// Optional character-name editor. Uses the engine's existing character state.
+// The name is included in normal campaign JSON exports; no gameplay rules are changed.
 (() => {
-  const main = document.getElementById('app');
-  if (!main) return;
-
-  const style = document.createElement('style');
-  style.textContent = `
+  const root = document.getElementById('app');
+  if (!root) return;
+  const css = document.createElement('style');
+  css.textContent = `
     .poly-name-heading { display:flex; align-items:center; gap:8px; }
-    .poly-name-edit { border:1px solid rgba(200,165,112,.4); background:transparent; color:inherit; border-radius:6px; width:29px; height:29px; cursor:pointer; display:inline-grid; place-items:center; padding:0; font-size:16px; line-height:1; }
-    .poly-name-edit:focus-visible { outline:2px solid #d6aa6c; outline-offset:3px; }
-    .poly-character-name { margin:3px 0 10px; font-size:14px; color:#d6b987; overflow-wrap:anywhere; }
+    .poly-name-edit { display:inline-grid;place-items:center;width:30px;height:30px;padding:0;border:1px solid rgba(200,165,112,.5);border-radius:6px;background:transparent;color:inherit;font-size:18px;cursor:pointer; }
+    .poly-character-name { margin:4px 0 10px;color:#d6b987;font-size:14px;overflow-wrap:anywhere; }
+    .poly-name-form { display:flex;flex-wrap:wrap;gap:7px;margin:7px 0 12px; }
+    .poly-name-form input { flex:1 1 135px;min-width:0;padding:9px;border:1px solid #806a4e;border-radius:6px;background:#14161c;color:#fff;font:16px system-ui; }
+    .poly-name-form button { padding:8px 10px;border:1px solid #806a4e;border-radius:6px;background:#30271f;color:#fff;cursor:pointer; }
   `;
-  document.head.appendChild(style);
+  document.head.appendChild(css);
 
-  function getCharacter() {
-    try { return typeof state !== 'undefined' && state && state.character ? state.character : null; }
+  const character = () => {
+    try { return typeof state !== 'undefined' ? state.character : null; }
     catch (_) { return null; }
-  }
-  function refresh() {
-    const heading = main.querySelector('.sheet-title h3');
-    const character = getCharacter();
-    if (!heading || !character) return;
+  };
 
-    if (!heading.classList.contains('poly-name-heading')) {
-      heading.classList.add('poly-name-heading');
-      const pencil = document.createElement('button');
-      pencil.type = 'button';
-      pencil.className = 'poly-name-edit';
-      pencil.textContent = '✎';
-      pencil.title = 'Edit character name';
-      pencil.setAttribute('aria-label', 'Edit character name');
-      pencil.addEventListener('click', () => {
-        const current = String(getCharacter()?.name || '');
-        const next = window.prompt('Character name', current);
-        if (next === null) return;
-        const cleaned = next.trim().replace(/[\\u0000-\\u001f\\u007f]/g, '').slice(0, 60);
-        const target = getCharacter();
-        if (!target) return;
-        if (cleaned) target.name = cleaned;
-        else delete target.name;
-        refresh();
-      });
-      heading.appendChild(pencil);
-    }
+  function enhance() {
+    const heading = root.querySelector('.sheet-title h3');
+    const c = character();
+    if (!heading || !c || heading.dataset.nameEditor === 'ready') return;
+    heading.dataset.nameEditor = 'ready';
+    heading.classList.add('poly-name-heading');
     const holder = heading.parentElement;
-    let label = holder.querySelector('.poly-character-name');
-    if (!label) {
-      label = document.createElement('div');
-      label.className = 'poly-character-name';
-      heading.insertAdjacentElement('afterend', label);
-    }
-    const name = String(character.name || '').trim();
-    if (label.textContent !== name) label.textContent = name;
-    label.hidden = !name;
-  }
+    const display = document.createElement('div');
+    display.className = 'poly-character-name';
+    const updateDisplay = () => {
+      display.textContent = String(character()?.name || '').trim();
+      display.hidden = !display.textContent;
+    };
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'poly-name-edit';
+    edit.textContent = '✎';
+    edit.setAttribute('aria-label', 'Edit character name');
+    edit.title = 'Edit character name';
+    heading.appendChild(edit);
+    heading.insertAdjacentElement('afterend', display);
+    updateDisplay();
 
-  // Updates once per new character-panel render, without altering the game engine.
-  const observer = new MutationObserver(refresh);
-  observer.observe(main, {childList:true, subtree:true});
-  refresh();
+    edit.addEventListener('click', () => {
+      const previous = holder.querySelector('.poly-name-form');
+      if (previous) { previous.remove(); return; }
+      const form = document.createElement('form');
+      form.className = 'poly-name-form';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.maxLength = 60;
+      input.placeholder = 'Character name';
+      input.setAttribute('aria-label', 'Character name');
+      input.value = String(character()?.name || '');
+      const saveButton = document.createElement('button');
+      saveButton.type = 'submit';
+      saveButton.textContent = 'Save';
+      const cancelButton = document.createElement('button');
+      cancelButton.type = 'button';
+      cancelButton.textContent = 'Cancel';
+      cancelButton.addEventListener('click', () => form.remove());
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        const target = character();
+        if (!target) return;
+        const name = input.value.trim().slice(0, 60);
+        if (name) target.name = name;
+        else delete target.name;
+        if (typeof save === 'function') save();
+        updateDisplay();
+        form.remove();
+      });
+      form.append(input, saveButton, cancelButton);
+      display.insertAdjacentElement('afterend', form);
+      input.focus();
+    });
+  }
+  const observer = new MutationObserver(enhance);
+  observer.observe(root, {childList:true,subtree:true});
+  enhance();
 })();
