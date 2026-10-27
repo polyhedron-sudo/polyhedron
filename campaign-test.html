@@ -58,7 +58,7 @@
   describe('Game Server button handler', () => String(typeof document.getElementById('changeModelBtn').onclick));
   describe('campaign root', () => document.getElementById('app').children.length + ' elements');
   describe('local storage', () => { localStorage.getItem('polyhedron-api-base-url'); return 'available'; });
-  describe('script resources', () => performance.getEntriesByType('resource').filter(x => /\\/(rules|app)\\.js/.test(x.name)).map(x => x.name.split('/').pop() + ' fetched').join(', ') || 'none listed');
+  describe('script resources', () => performance.getEntriesByType('resource').filter(x => x.name.includes('/rules.js') || x.name.includes('/app.js')).map(x => x.name.split('/').pop() + ' fetched').join(', ') || 'none listed');
 })();
 </script>
 <script>
