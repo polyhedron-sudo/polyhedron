@@ -26,11 +26,14 @@
     heading.dataset.nameEditor = 'ready';
     heading.classList.add('poly-name-heading');
     const holder = heading.parentElement;
-    const display = document.createElement('div');
-    display.className = 'poly-character-name';
+    const label = heading.querySelector('span.poly-name-label') || document.createElement('span');
+    label.className = 'poly-name-label';
+    if (!label.isConnected) {
+      heading.textContent = '';
+      heading.appendChild(label);
+    }
     const updateDisplay = () => {
-      display.textContent = String(character()?.name || '').trim();
-      display.hidden = !display.textContent;
+      label.textContent = String(character()?.name || '').trim() || 'Your Character';
     };
     const edit = document.createElement('button');
     edit.type = 'button';
@@ -39,7 +42,6 @@
     edit.setAttribute('aria-label', 'Edit character name');
     edit.title = 'Edit character name';
     heading.appendChild(edit);
-    heading.insertAdjacentElement('afterend', display);
     updateDisplay();
 
     edit.addEventListener('click', () => {
@@ -72,7 +74,7 @@
         form.remove();
       });
       form.append(input, saveButton, cancelButton);
-      display.insertAdjacentElement('afterend', form);
+      heading.insertAdjacentElement('afterend', form);
       input.focus();
     });
   }
