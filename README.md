@@ -37,3 +37,4 @@ Polyhedron is an evolving prototype being developed and tested with a small grou
 ---
 
 *Polyhedron — an interactive storytelling experiment.*
+Limited testing available at: "https://polyhedron-sudo.github.io/polyhedron/"
