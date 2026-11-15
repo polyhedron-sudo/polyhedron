@@ -37,4 +37,4 @@ Polyhedron is an evolving prototype being developed and tested with a small grou
 ---
 
 *Polyhedron — an interactive storytelling experiment.*
-Limited testing available at: https://polyhedron-sudo.github.io/polyhedron/ utilizing the default gemma4:31b model as DM.
+Limited testing available utilizing the default gemma4:31b model as DM, contact via direct message for pre beta access.
